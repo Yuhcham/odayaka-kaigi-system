@@ -225,7 +225,7 @@ if __name__ == '__main__':
     serve(app, host="0.0.0.0", port=8080)
 """
 
-# app.py (スマホ対応・最終完成版)
+# app.py (ウォームアップ機能搭載・最終完成版)
 import os
 import math
 import librosa
@@ -233,6 +233,7 @@ import numpy as np
 from openai import OpenAI
 from flask import Flask, request, jsonify, render_template
 from getpass import getpass
+from pydub import AudioSegment
 import json
 import subprocess
 
@@ -250,27 +251,20 @@ normalization_ranges = {}
 
 def _calculate_normalization_ranges():
     global normalization_ranges
-    if len(emotion_dictionary) < 4:
-        return
+    if len(emotion_dictionary) < 4: return
     pitches = [vec[0] for vec in emotion_dictionary.values()]
     energies = [vec[1] for vec in emotion_dictionary.values()]
     sharpnesses = [vec[2] for vec in emotion_dictionary.values()]
     def get_range(values):
         min_val, max_val = min(values), max(values)
-        if min_val == max_val:
-            return {'min': min_val * 0.9, 'max': max_val * 1.1}
+        if min_val == max_val: return {'min': min_val * 0.9, 'max': max_val * 1.1}
         return {'min': min_val, 'max': max_val}
-    normalization_ranges = {
-        'pitch': get_range(pitches),
-        'energy': get_range(energies),
-        'sharpness': get_range(sharpnesses)
-    }
+    normalization_ranges = {'pitch': get_range(pitches), 'energy': get_range(energies), 'sharpness': get_range(sharpnesses)}
     print("--- 🧠 あなた専用の正規化レンジを計算しました ---")
     print(normalization_ranges)
 
 def calculate_tone_score(pitch, energy, sharpness, ranges):
-    if not ranges:
-        return 0.0
+    if not ranges: return 0.0
     def normalize(value, r):
         if (r['max'] - r['min']) == 0: return 0.5
         return (np.clip(value, r['min'], r['max']) - r['min']) / (r['max'] - r['min'])
@@ -288,21 +282,32 @@ def convert_audio_with_ffmpeg(input_path, output_path="temp_converted.wav"):
     command = ["ffmpeg", "-i", input_path, "-y", output_path]
     try:
         subprocess.run(command, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        print(f"ffmpegによる変換成功: {input_path} -> {output_path}")
     except subprocess.CalledProcessError as e:
         print("ffmpegコマンド実行中にエラーが発生しました。")
         print("Stderr:", e.stderr.decode('utf-8'))
         raise e
 
+@app.route('/warmup', methods=['POST'])
+def warmup():
+    try:
+        sr = 22050
+        dummy_audio = np.zeros(sr) 
+        librosa.piptrack(y=dummy_audio, sr=sr)
+        librosa.feature.rms(y=dummy_audio)
+        librosa.feature.spectral_centroid(y=dummy_audio, sr=sr)
+        print("--- 🔥 サーバーのウォームアップが完了しました ---")
+        return jsonify({'status': 'ready'})
+    except Exception as e:
+        print(f"ウォームアップ中にエラー: {e}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
 @app.route('/calibrate', methods=['POST'])
 def calibrate_emotion():
-    if 'audio' not in request.files: return jsonify({'status': 'error', 'error': 'No audio file part'}), 400
     emotion = request.args.get('emotion')
-    ext = request.args.get('ext', 'webm') # ★ 拡張子を受け取る
-    if not emotion: return jsonify({'status': 'error', 'error': 'Emotion label is missing'}), 400
+    ext = request.args.get('ext', 'webm')
     audio_file = request.files['audio']
     try:
-        input_filename = f"temp_{emotion}.{ext}" # ★
+        input_filename = f"temp_{emotion}.{ext}"
         audio_file.save(input_filename)
         wav_filename = f"temp_{emotion}.wav"
         convert_audio_with_ffmpeg(input_filename, wav_filename)
@@ -329,17 +334,17 @@ def analyze_audio():
     if not client: return jsonify({'error': 'OpenAI client is not configured.'}), 500
     if 'audio' not in request.files: return jsonify({'error': 'No audio file part'}), 400
     audio_file = request.files['audio']
-    ext = request.args.get('ext', 'webm') # ★ 拡張子を受け取る
+    ext = request.args.get('ext', 'webm')
     try:
         active_ranges = normalization_ranges if normalization_ranges else {
             'pitch': {'min': 85.0, 'max': 255.0},'energy': {'min': 0.005, 'max': 0.15},'sharpness': {'min': 500.0, 'max': 3500.0}
         }
         
-        input_filename = f"temp_audio.{ext}" # ★
+        input_filename = f"temp_audio.{ext}"
         audio_file.save(input_filename)
         wav_filename = "temp_converted.wav"
         convert_audio_with_ffmpeg(input_filename, wav_filename)
-
+        
         y, sr = librosa.load(wav_filename)
         pitches, _ = librosa.piptrack(y=y, sr=sr)
         rms = librosa.feature.rms(y=y)
@@ -392,7 +397,9 @@ def analyze_audio():
             'tone_score': f"{tone_score:.2f}",
             'final_score': f"{final_score:.2f}"
         })
+
     except Exception as e:
+        print(f"分析中にエラーが発生しました: {e}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/correct', methods=['POST'])
