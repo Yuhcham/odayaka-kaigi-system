@@ -1,345 +1,4 @@
-<!--
-<!DOCTYPE html>
-<html lang="ja">
-<head>
-    <meta charset="UTF-8"> <title>穏やか会議システム</title> <style>
-        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&display=swap'); /* 日本語をキレイに表示するためのフォントを読み込み */
-        body { font-family: 'Noto Sans JP', sans-serif; text-align: center; margin: 0; background-color: #f4f7f9; color: #4A5568; }
-        .header { width: 100%; height: 200px; background-image: linear-gradient(rgba(0, 0, 0, 0.3), rgba(0, 0,0, 0.3)), url("{{ url_for('static', filename='header.jpg') }}"); background-size: cover; background-position: center; display: flex; justify-content: center; align-items: center; flex-direction: column; color: white; text-shadow: 0 2px 10px rgba(0, 0, 0, 0.4); }
-        .header h1 { font-size: 3.5em; }
-        .container { max-width: 850px; margin: 40px auto 50px auto; background: white; padding: 30px 50px; border-radius: 16px; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.08); text-align: left; }
-        h2 { font-size: 1.5em; color: #2D3748; border-bottom: 2px solid #E2E8F0; padding-bottom: 10px; margin-bottom: 25px; text-align: center; }
-        .input-group { margin-bottom: 20px; }
-        .input-group label { display: block; text-align: left; font-weight: 500; margin-bottom: 8px; }
-        .input-group input, .input-group textarea { width: 100%; padding: 12px 15px; font-size: 1em; border: 1px solid #CBD5E0; border-radius: 8px; box-sizing: border-box; }
-        .calibration-section { background-color: #EDF2F7; border: 1px solid #E2E8F0; padding: 20px; margin-bottom: 30px; border-radius: 8px; }
-        .calibration-controls { display: flex; justify-content: space-around; flex-wrap: wrap; gap: 15px; }
-        .calibration-controls button { flex-grow: 1; padding: 10px 15px; font-size: 1em; font-weight: bold; cursor: pointer; border: 2px solid transparent; border-radius: 8px; transition: all 0.2s; }
-        /* 各感情ボタンの色を設定 */
-        .cal-joy { background-color: #F6E05E; color: #975A16; }
-        .cal-anger { background-color: #F56565; color: white; }
-        .cal-sadness { background-color: #63B3ED; color: white; }
-        .cal-normal { background-color: #A0AEC0; color: white; }
-        .cal-done { background-color: #48BB78; color: white; border-color: #2F855A; transform: scale(1.05); } /* 登録完了したボタンの見た目 */
-        .main-controls { text-align: center; }
-        .main-controls button { font-size: 1.1em; font-weight: bold; padding: 12px 30px; cursor: pointer; border: none; border-radius: 8px; transition: all 0.2s; margin: 5px;}
-        #startButton { background-color: #48BB78; color: white; }
-        #stopButton { background-color: #F56565; color: white; }
-        .result-area { background-color: #F7FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 20px; margin: 30px 0; }
-        #status { font-weight: bold; font-size: 1.1em; margin-bottom: 20px; text-align: center;}
-        /* メーターのデザイン */
-        .meters-container { display: flex; flex-direction: column; gap: 15px; margin-bottom: 20px; }
-        .meter-group { text-align: center; }
-        .meter-group label { font-size: 0.9em; font-weight: 500; color: #718096; }
-        .visualizer-container { width: 100%; height: 12px; border-radius: 6px; position: relative; overflow: hidden; background-color: #E2E8F0; margin-top: 5px; }
-        .level-bar { height: 100%; transition: width 0.2s, background-color 0.3s; display: flex; justify-content: center; align-items: center; color: white; font-size: 0.7em; font-weight: bold; }
-        #volume-bar, #text-score-bar, #tone-score-bar, #final-score-bar { width: 50%; background-color: #CBD5E0; }
-        #volume-bar {width: 0%; background-color: #68D391;}
-        #final-score-bar { border-top: 2px solid white; border-bottom: 2px solid white;}
-        #result { font-size: 1.1em; color: #2D3748; min-height: 1.5em; font-weight: 500; margin-top: 20px; text-align: center; }
-        #minutes-container { margin-top: 40px; text-align: left; border-top: 1px solid #E2E8F0; padding-top: 20px; }
-        #minutes-log { height: 200px; overflow-y: scroll; border: 1px solid #E2E8F0; padding: 15px; background-color: #F7FAFC; border-radius: 8px; white-space: pre-wrap; line-height: 1.6; }
-        .minutes-actions { text-align: center; margin-top: 20px; display: flex; justify-content: center; gap: 15px; }
-        .minutes-actions button { display: none; }
-        #downloadButton { background-color: #38B2AC; color: white; }
-        #correctButton { background-color: #ED8936; color: white; }
-    </style>
-</head>
-<body>
-    <div class="header"><h1>穏やか会議システム</h1></div> <div class="container"> <div class="input-group">
-            <label for="meeting-prompt">会議タイトル・AIへのヒント</label>
-            <input type="text" id="meeting-prompt" placeholder="会議のタイトルや、AIに認識させたい専門用語などを入力">
-        </div>
-        
-        <div class="calibration-section"> <h2>感情辞書の作成</h2>
-            <p style="text-align: center; margin-top:-15px; margin-bottom: 20px;">
-                <b>より正確なトーン分析のために、あなたの声をAIに学習させることを推奨します。</b><br>
-                <small>(このステップを省略しても、一般的な基準値で分析は開始できます)</small>
-            </p>
-            <div class="calibration-controls"> <button id="cal-joy" class="cal-joy" onclick="startCalibration('joy')">「喜び」を録音</button>
-                <button id="cal-anger" class="cal-anger" onclick="startCalibration('anger')">「怒り」を録音</button>
-                <button id="cal-sadness" class="cal-sadness" onclick="startCalibration('sadness')">「悲しみ」を録音</button>
-                <button id="cal-normal" class="cal-normal" onclick="startCalibration('normal')">「普通」の声を録音</button>
-            </div>
-        </div>
-
-        <h2>会議の分析</h2>
-        <div class="main-controls">
-            <button id="startButton" onclick="startAnalysis()">分析開始</button>
-            <button id="stopButton" onclick="stopAnalysis()">分析終了</button>
-        </div>
-        <div class="result-area"> <div id="status">マイクの状態: OFF</div>
-            <div class="meters-container"> <div class="meter-group"><label>音量</label><div class="visualizer-container"><div id="volume-bar" class="level-bar"></div></div></div>
-                 <div class="meter-group"><label>言葉のスコア</label><div class="visualizer-container"><div id="text-score-bar" class="level-bar">0.00</div></div></div>
-                 <div class="meter-group"><label>抑揚・トーン</label><div class="visualizer-container"><div id="tone-score-bar" class="level-bar">0.00</div></div></div>
-                 <div class="meter-group"><label>雰囲気</label><div class="visualizer-container"><div id="final-score-bar" class="level-bar">0.00</div></div></div>
-            </div>
-            <div id="result">分析結果を表示</div>
-        </div>
-        
-        <img id="catImage" src="{{ url_for('static', filename='cat.gif') }}" alt="A cute cat" style="display:none; margin:20px auto; max-width:400px; border-radius: 8px;">
-        
-        <div id="minutes-container"> <h2>議事録</h2>
-            <div id="minutes-log"></div>
-            <div class="minutes-actions">
-                <button id="correctButton" onclick="correctWithLLM()">LLM(大規模言語モデル)で校正</button>
-                <button id="downloadButton" onclick="downloadMinutes()">テキストをダウンロード</button>
-            </div>
-        </div>
-    </div>
-
-    <script>
-        // --- プログラム全体で使う大事な設定値 ---
-        const SPEAKING_THRESHOLD = 40; // これ以上の音量なら「話してる」と判断
-        const SILENCE_DELAY = 1000;     // 0.75秒黙ったら「話おわった」と判断
-        const MIN_RECORDING_TIME = 1000; // 最低でも0.3秒は録音する（ファイルが壊れるのを防ぐ）
-
-        // --- プログラム全体で使う、データをしまっておくための「変数」という箱 ---
-        let mediaStream = null, audioContext = null, analyser = null, visualizerFrameId = null, fullTranscript = "";
-        let mediaRecorder = null, isRecording = false, silenceTimer = null, recordingStartTime = 0;
-        let calibratedEmotions = new Set(); // キャリブレーションが終わった感情を覚えておく
-
-        // 「喜び」などのキャリブレーションボタンが押されたときに動く関数
-        async function startCalibration(emotion) {
-            const button = document.getElementById(`cal-${emotion}`);
-            button.textContent = "録音中..."; // ボタンの文字を「録音中...」に変える
-            button.disabled = true; // ボタンを一時的に押せなくする
-            try {
-                // PCに「マイクを使わせて！」とお願いする
-                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                // マイクの音を録音するための「録音機」を準備する
-                const rec = new MediaRecorder(stream);
-                const chunks = []; // 録音した音声の断片を入れておく配列
-                rec.ondataavailable = e => chunks.push(e.data); // 音声データができたら配列に入れる
-                
-                // 録音が止まったら実行される処理
-                rec.onstop = async () => {
-                    const blob = new Blob(chunks, { type: 'audio/webm' });
-                    const formData = new FormData();
-                    formData.append('audio', blob);
-                    // 録音した声を、感情のラベル（'joy'など）と一緒にサーバーに送る
-                    const response = await fetch(`/calibrate?emotion=${emotion}`, { method: 'POST', body: formData });
-                    const result = await response.json(); // サーバーからの返事を受け取る
-                    if (result.status === 'success') {
-                        alert(`「${emotion}」の調整完了！`);
-                        calibratedEmotions.add(emotion); // 完了したことを覚えておく
-                        button.classList.add('cal-done'); // ボタンの見た目を「完了」に変える
-                        button.textContent = `「${emotion}」登録完了`;
-                    } else { 
-                        alert(`エラー: ${result.error}`); // エラーがあれば表示
-                        button.textContent = `「${emotion}」を録音`;
-                        button.disabled = false;
-                    }
-                    stream.getTracks().forEach(track => track.stop()); // マイクを解放する
-                };
-                
-                rec.start(); // 録音開始！
-                // 5秒たったら自動で録音を止めるためのタイマー
-                setTimeout(() => { if(rec.state === 'recording') rec.stop() }, 5000);
-            } catch (err) {
-                alert(`マイクエラー: ${err}`);
-                button.textContent = `「${emotion}」を録音`;
-                button.disabled = false;
-            }
-        }
-        
-        // 「分析開始」ボタンが押されたときに動く関数
-        async function startAnalysis() {
-            if (mediaStream) return; // すでに開始していたら何もしない
-            // 議事録などの表示をリセットする
-            fullTranscript = "";
-            document.getElementById('minutes-log').textContent = "";
-            document.getElementById('downloadButton').style.display = 'none';
-            document.getElementById('correctButton').style.display = 'none';
-            try {
-                // マイクの使用許可をもらい、監視を開始する
-                mediaStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
-                document.getElementById('status').textContent = 'マイクの状態: ON (発言を待っています)';
-                visualizeAudio(); // ★音量監視をスタートさせる
-            } catch (err) {
-                document.getElementById('status').textContent = `エラー: マイクへのアクセスに失敗しました: ${err.message}`;
-            }
-        }
-
-        // 「分析終了」ボタンが押されたときに動く関数
-        async function stopAnalysis() {
-            // いろいろなものを停止・リセットして、アプリを開始前の状態に戻す
-            if (isRecording) mediaRecorder.stop();
-            if (fullTranscript.length > 0) {
-                document.getElementById('downloadButton').style.display = 'inline-block';
-                document.getElementById('correctButton').style.display = 'inline-block';
-            }
-            if (mediaStream) mediaStream.getTracks().forEach(track => track.stop());
-            if (visualizerFrameId) cancelAnimationFrame(visualizerFrameId);
-            if (audioContext && audioContext.state !== 'closed') await audioContext.close();
-            mediaStream = audioContext = analyser = visualizerFrameId = silenceTimer = null;
-            isRecording = false;
-            const volumeBar = document.getElementById('volume-bar');
-            volumeBar.style.width = '0%';
-            volumeBar.textContent = ''; // 音量の数字を消す
-            // すべてのスコアメーターを中立状態に戻す
-            const neutralColor = '#CBD5E0', neutralWidth = '50%';
-            ['text-score-bar', 'tone-score-bar', 'final-score-bar'].forEach(id => {
-                const bar = document.getElementById(id);
-                bar.style.width = neutralWidth;
-                bar.style.backgroundColor = neutralColor;
-                bar.textContent = "0.00";
-            });
-            document.getElementById('status').textContent = 'マイクの状態: OFF';
-        }
-
-        // マイクの音量を監視し続ける、システムの「耳」
-        function visualizeAudio() {
-            audioContext = new (window.AudioContext || window.webkitAudioContext)();
-            analyser = audioContext.createAnalyser();
-            const source = audioContext.createMediaStreamSource(mediaStream);
-            source.connect(analyser);
-            analyser.fftSize = 256;
-            const bufferLength = analyser.frequencyBinCount;
-            const dataArray = new Uint8Array(bufferLength);
-            const volumeBar = document.getElementById('volume-bar');
-            
-            // 目で追えない速さで、何度も何度もこの処理を繰り返す
-            function draw() {
-                visualizerFrameId = requestAnimationFrame(draw);
-                if (!analyser) return;
-                analyser.getByteFrequencyData(dataArray);
-                let sum = 0; for (let i = 0; i < bufferLength; i++) sum += dataArray[i];
-                const average = sum / bufferLength; // 現在の平均的な音量を計算
-                
-                // 計算した音量に合わせて、メーターの見た目を変える
-                volumeBar.style.width = (average / 128) * 100 + '%';
-                // 計算した音量を、数字としてバーの中に書き込む
-                volumeBar.textContent = Math.round(average);
-
-                // ★★★ ここがVAD（声の検知）の心臓部 ★★★
-                if (average > SPEAKING_THRESHOLD) { // もし声が設定した大きさより大きかったら
-                    if (!isRecording) startRecording(); // 「話し始めた！」と判断して録音開始
-                    if (silenceTimer) { clearTimeout(silenceTimer); silenceTimer = null; } // 沈黙タイマーをリセット
-                } else { // もし声が小さかったら
-                    if (isRecording && !silenceTimer) { // 話し終わった直後なら
-                        // 「黙ったかな？」と判断して、0.75秒の沈黙タイマーを開始
-                        silenceTimer = setTimeout(() => stopRecordingAndSend(), SILENCE_DELAY);
-                    }
-                }
-            }
-            draw();
-        }
-
-        // VADの判断に従って、録音機をスタートさせる関数
-        function startRecording() {
-            if (!mediaStream) return;
-            isRecording = true;
-            document.getElementById('status').textContent = 'マイクの状態: 録音中...';
-            recordingStartTime = Date.now();
-            mediaRecorder = new MediaRecorder(mediaStream);
-            mediaRecorder.start();
-            const audioChunks = [];
-            mediaRecorder.ondataavailable = event => { if (event.data.size > 0) audioChunks.push(event.data); };
-            mediaRecorder.onstop = () => { if (audioChunks.length > 0) sendToServer(new Blob(audioChunks, { type: 'audio/webm' })); };
-        }
-
-        // VADの判断に従って、録音機をストップさせる関数
-        function stopRecordingAndSend() {
-            if (mediaRecorder && mediaRecorder.state === 'recording') {
-                const elapsedTime = Date.now() - recordingStartTime;
-                const timeToWait = MIN_RECORDING_TIME - elapsedTime;
-                // もし録音時間が短すぎたら、少し待ってから止める
-                if (timeToWait > 0) { setTimeout(() => { mediaRecorder.stop(); }, timeToWait); } 
-                else { mediaRecorder.stop(); }
-                isRecording = false;
-                document.getElementById('status').textContent = 'マイクの状態: ON (発言を待っています)';
-            }
-        }
-        
-        // 録音した音声データを、サーバーの分析工場に送るトラックの役割
-        async function sendToServer(audioBlob) {
-            const formData = new FormData();
-            formData.append('audio', audioBlob, 'realtime_audio.webm');
-            formData.append('prompt', document.getElementById('meeting-prompt').value);
-            const resultDiv = document.getElementById('result');
-            resultDiv.textContent = '分析中...';
-            try {
-                // 実際にサーバーにデータを送信している部分
-                const response = await fetch('/analyze', { method: 'POST', body: formData });
-                const data = await response.json(); // サーバーからの分析結果を受け取る
-                if (data.error) { resultDiv.textContent = `エラー: ${data.error}`; return; }
-                
-                // --- 受け取った結果を画面に反映させる ---
-                resultDiv.textContent = data.filtered_text.trim() ? `「${data.filtered_text}」` : '（ハルシネーションとして結果を切り捨てます）';
-                // 3つのスコアメーターの見た目を更新する
-                updateScoreBar(document.getElementById('text-score-bar'), parseFloat(data.text_score));
-                updateScoreBar(document.getElementById('tone-score-bar'), parseFloat(data.tone_score));
-                updateScoreBar(document.getElementById('final-score-bar'), parseFloat(data.final_score));
-                // 議事録に記録する
-                if (data.filtered_text && data.filtered_text.trim().length > 0) {
-                    const timestamp = new Date().toLocaleTimeString('ja-JP');
-                    const logEntry = `[${timestamp}] ${data.filtered_text} (Final Score: ${data.final_score})\n`;
-                    fullTranscript += logEntry;
-                    document.getElementById('minutes-log').textContent = fullTranscript;
-                    document.getElementById('minutes-log').scrollTop = document.getElementById('minutes-log').scrollHeight; // 自動スクロール
-                }
-                
-                // もしネガティブな判定だったら、猫の画像を表示する
-                document.getElementById('catImage').style.display = data.is_negative ? 'block' : 'none';
-
-            } catch (err) { resultDiv.textContent = `通信エラー: ${err}`; }
-        }
-
-        // 点数に応じて、メーターの色や長さを変える専門の職人
-        function updateScoreBar(barElement, score) {
-            const widthPercent = (score + 1) / 2 * 100; // -1.0〜+1.0 のスコアを 0%〜100% の幅に変換
-            barElement.style.width = `${widthPercent}%`;
-            barElement.textContent = `${(score).toFixed(2)}`; // スコアの数値を表示
-            // スコアのプラス・マイナスに応じて色を変える
-            if (score < -0.3) { barElement.style.backgroundColor = '#F56565'; } // 赤
-            else if (score > 0.3) { barElement.style.backgroundColor = '#48BB78'; } // 緑
-            else { barElement.style.backgroundColor = '#4299E1'; } // 青 (中立)
-        }
-
-        // 議事録の校正ボタンが押されたときに動く関数
-        async function correctWithLLM() {
-            const minutesLog = document.getElementById('minutes-log');
-            const originalText = fullTranscript;
-            minutesLog.textContent = "LLM(大規模言語モデル)が校正中です...しばらくお待ちください...";
-            try {
-                const response = await fetch('/correct', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ text: originalText })
-                });
-                const data = await response.json();
-                if (data.error) {
-                    minutesLog.textContent = `LLMエラー: ${data.error}`;
-                } else {
-                    minutesLog.textContent = data.corrected_text;
-                    fullTranscript = data.corrected_text; 
-                }
-            } catch (err) {
-                minutesLog.textContent = `通信エラー: ${err}`;
-            }
-        }
-
-        // 議事録のダウンロードボタンが押されたときに動く関数
-        function downloadMinutes() {
-            let meetingTitle = document.getElementById('meeting-prompt').value.split(' ')[0] || "議事録";
-            const blob = new Blob([fullTranscript], { type: 'text/plain' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-a.href = url;
-            a.download = `${meetingTitle}.txt`;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-        }
-    </script>
-</body>
-</html>
--->
-
-
-
+<!--HTMLはてきとう-->
 <!DOCTYPE html>
 <html lang="ja">
 <head>
@@ -433,18 +92,15 @@ a.href = url;
     </div>
 
     <script>
-        // ★★★ ウォームアップ関連のJavaScriptを全て削除 ★★★
-
         const MimeType = MediaRecorder.isTypeSupported('audio/mp4') ? 'audio/mp4' : 'audio/webm';
         const FileExtension = MimeType.split('/')[1];
         const SPEAKING_THRESHOLD = 40, SILENCE_DELAY = 1500, MIN_RECORDING_TIME = 1000;
         let mediaStream = null, audioContext = null, analyser = null, visualizerFrameId = null, fullTranscript = "";
         let mediaRecorder = null, isRecording = false, silenceTimer = null, recordingStartTime = 0;
         let calibratedEmotions = new Set();
-        let isFirstAnalysis = true; // ★ 初回分析かどうかを判定するフラグ
+        let isFirstAnalysis = true; //初回分析かどうかを判定するフラグ
 
         async function startCalibration(emotion) {
-            // (この関数は変更なし)
             const button = document.getElementById(`cal-${emotion}`);
             button.textContent = "録音中..."; button.disabled = true;
             try {
@@ -472,7 +128,7 @@ a.href = url;
         
         async function startAnalysis() {
             if (mediaStream) return;
-            isFirstAnalysis = true; // ★ 分析開始時にフラグをリセット
+            isFirstAnalysis = true; //分析開始時にフラグをリセット
             fullTranscript = "";
             document.getElementById('minutes-log').textContent = "";
             document.getElementById('downloadButton').style.display = 'none';
@@ -487,7 +143,6 @@ a.href = url;
         }
 
         async function stopAnalysis() {
-            // (この関数は変更なし)
             if (isRecording) mediaRecorder.stop();
             if (fullTranscript.length > 0) {
                 document.getElementById('downloadButton').style.display = 'inline-block';
@@ -510,7 +165,6 @@ a.href = url;
         }
 
         function visualizeAudio() {
-            // (この関数は変更なし)
             audioContext = new (window.AudioContext || window.webkitAudioContext)();
             analyser = audioContext.createAnalyser();
             const source = audioContext.createMediaStreamSource(mediaStream);
@@ -540,7 +194,6 @@ a.href = url;
         }
 
         function startRecording() {
-            // (この関数は変更なし)
             if (!mediaStream) return;
             isRecording = true;
             document.getElementById('status').textContent = 'マイクの状態: 録音中...';
@@ -553,7 +206,6 @@ a.href = url;
         }
 
         function stopRecordingAndSend() {
-            // (この関数は変更なし)
             if (mediaRecorder && mediaRecorder.state === 'recording') {
                 const elapsedTime = Date.now() - recordingStartTime;
                 const timeToWait = MIN_RECORDING_TIME - elapsedTime;
@@ -570,7 +222,7 @@ a.href = url;
             formData.append('prompt', document.getElementById('meeting-prompt').value);
             const resultDiv = document.getElementById('result');
             
-            // ★★★ 初回分析時だけメッセージを変える ★★★
+            //初回分析時だけメッセージを変える
             if (isFirstAnalysis) {
                 resultDiv.textContent = '初回分析中... (サーバー準備のため少し時間がかかります)';
             } else {
@@ -581,7 +233,7 @@ a.href = url;
                 const response = await fetch(`/analyze?ext=${FileExtension}`, { method: 'POST', body: formData });
                 const data = await response.json();
                 
-                isFirstAnalysis = false; // ★ 2回目以降のためにフラグを更新
+                isFirstAnalysis = false; //2回目以降のためにフラグを更新
 
                 if (data.error) { resultDiv.textContent = `エラー: ${data.error}`; return; }
                 resultDiv.textContent = data.filtered_text.trim() ? `「${data.filtered_text}」` : '（音声が認識できませんでした）';
@@ -598,12 +250,11 @@ a.href = url;
                 document.getElementById('catImage').style.display = data.is_negative ? 'block' : 'none';
             } catch (err) { 
                 resultDiv.textContent = `通信エラー: ${err}`;
-                isFirstAnalysis = true; // エラーが起きたら、次の分析も「初回」扱いにする
+                isFirstAnalysis = true; //エラーが起きたら、次の分析も「初回」扱いにする
             }
         }
 
         function updateScoreBar(barElement, score) {
-            // (この関数は変更なし)
             const widthPercent = (score + 1) / 2 * 100;
             barElement.style.width = `${widthPercent}%`;
             barElement.textContent = `${(score).toFixed(2)}`;
@@ -613,7 +264,6 @@ a.href = url;
         }
 
         async function correctWithLLM() {
-            // (この関数は変更なし)
             const minutesLog = document.getElementById('minutes-log');
             const originalText = fullTranscript;
             minutesLog.textContent = "LLM(大規模言語モデル)が校正中です...しばらくお待ちください...";
@@ -626,7 +276,6 @@ a.href = url;
         }
 
         function downloadMinutes() {
-            // (この関数は変更なし)
             let meetingTitle = document.getElementById('meeting-prompt').value.split(' ')[0] || "議事録";
             const blob = new Blob([fullTranscript], { type: 'text/plain' });
             const url = URL.createObjectURL(blob);
