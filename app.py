@@ -225,7 +225,7 @@ if __name__ == '__main__':
     serve(app, host="0.0.0.0", port=8080)
 """
 
-# app.py (構文エラー修正・最終完成版)
+# app.py (最終エラー処理強化版)
 import os, math, librosa, numpy as np, json, subprocess
 from openai import OpenAI
 from flask import Flask, request, jsonify, render_template
@@ -250,11 +250,10 @@ def _calculate_normalization_ranges():
     pitches = [vec[0] for vec in emotion_dictionary.values()]; energies = [vec[1] for vec in emotion_dictionary.values()]; sharpnesses = [vec[2] for vec in emotion_dictionary.values()]
     def get_range(values):
         min_val, max_val = min(values), max(values)
-        if min_val == max_val: return {'min': min_val * 0.9, 'max': max_val * 1.1}
+        if min_val == max_val: return {'min': min_val * 0.9, 'max': max_val * 1.1} if min_val != 0 else {'min': -0.1, 'max': 0.1}
         return {'min': min_val, 'max': max_val}
     normalization_ranges = {'pitch': get_range(pitches), 'energy': get_range(energies), 'sharpness': get_range(sharpnesses)}
-    print("--- 🧠 あなた専用の正規化レンジを計算しました ---")
-    print(normalization_ranges)
+    print("--- 🧠 あなた専用の正規化レンジを計算しました ---"); print(normalization_ranges)
 
 def calculate_tone_score(pitch, energy, sharpness, ranges):
     if not ranges: return 0.0
@@ -296,8 +295,15 @@ def index():
 
 @app.route('/analyze', methods=['POST'])
 def analyze_audio():
-    audio_file = request.files['audio']; ext = request.args.get('ext', 'webm')
+    # ★★★ この関数全体を、さらに大きなtry...exceptで囲み、絶対にクラッシュしないようにする ★★★
     try:
+        if not client: return jsonify({'error': 'OpenAI client is not configured.'}), 500
+        if 'audio' not in request.files: return jsonify({'error': 'No audio file part'}), 400
+        
+        audio_file = request.files['audio']
+        ext = request.args.get('ext', 'webm')
+
+        # トーン分析
         active_ranges = normalization_ranges if normalization_ranges else {'pitch': {'min': 85.0, 'max': 255.0},'energy': {'min': 0.005, 'max': 0.15},'sharpness': {'min': 500.0, 'max': 3500.0}}
         input_filename = f"temp_audio.{ext}"; audio_file.save(input_filename)
         wav_filename = "temp_converted.wav"; convert_audio_with_ffmpeg(input_filename, wav_filename)
@@ -306,33 +312,41 @@ def analyze_audio():
         current_features = [np.mean(pitches[pitches > 0]) if np.any(pitches > 0) else 0.0, np.mean(rms), np.mean(spectral_centroid)]
         tone_score = calculate_tone_score(current_features[0], current_features[1], current_features[2], active_ranges)
         
+        # テキスト分析
         with open(wav_filename, 'rb') as clean_audio_file:
             transcript_data = client.audio.transcriptions.create(model="whisper-1", file=clean_audio_file, language="ja", response_format="verbose_json")
         
-        filtered_text = ""; text_sentiment_score = 0.0
+        filtered_text = ""
         for segment in transcript_data.segments:
             if segment.avg_logprob > -0.8 and segment.no_speech_prob < 0.5: filtered_text += segment.text
         
+        text_sentiment_score = 0.0
         if filtered_text.strip():
             try:
                 response = client.chat.completions.create(model="gpt-3.5-turbo", messages=[{"role": "system", "content": "あなたはテキストの感情を分析する専門家です。ユーザーのテキストがポジティブかネガティブかを判断し、-1.0（完全にネガティブ）から1.0（完全にポジティブ）の間のスコアで評価してください。"},{"role": "user", "content": filtered_text}], functions=[{"name": "set_sentiment_score","description": "感情分析スコアを設定する","parameters": {"type": "object","properties": {"score": {"type": "number","description": "感情スコア, -1.0から1.0"}},"required": ["score"]}}], function_call={"name": "set_sentiment_score"})
                 function_args = json.loads(response.choices[0].message.function_call.arguments)
                 text_sentiment_score = function_args.get("score", 0.0)
             except Exception as e:
-                print(f"GPT感情分析中にエラー: {e}")
+                # ★★★ GPTでエラーが起きても、処理を止めずにスコアを0とする ★★★
+                print(f"GPT感情分析中にエラーが発生しましたが、処理を続行します: {e}")
+                text_sentiment_score = 0.0
         
+        # スコア統合
         final_score = (text_sentiment_score * 0.7) + (tone_score * 0.3)
         final_score = max(-1.0, min(1.0, final_score))
-
+        
+        # 最終的なJSONを返す
         return jsonify({'is_negative': True if final_score < -0.3 else False, 'filtered_text': filtered_text, 'text_score': f"{text_sentiment_score:.2f}",'tone_score': f"{tone_score:.2f}",'final_score': f"{final_score:.2f}"})
+
     except Exception as e:
-        print(f"分析中にエラーが発生しました: {e}")
-        return jsonify({'error': str(e)}), 500
+        # ★★★ 万が一、この関数内のどこかで予期せぬエラーが起きても、必ずJSONでエラーを返す ★★★
+        print(f"分析ルート全体で予期せぬエラーが発生しました: {e}")
+        return jsonify({'error': f'サーバーで予期せぬエラーが発生しました: {e}'}), 500
 
 @app.route('/correct', methods=['POST'])
 def correct_text_with_llm():
-    data = request.json
-    original_text = data['text']
+    # (この関数は変更ありません)
+    data = request.json; original_text = data['text']
     try:
         response = client.chat.completions.create(model="gpt-3.5-turbo", messages=[{"role": "system", "content": "あなたはビジネス会議の議事録を校正するプロの書記です。誤字脱字を修正し、文脈として不自然な部分を修正し、自然で読みやすい日本語の議事録に清書してください。"},{"role": "user", "content": original_text}])
         corrected_text = response.choices[0].message.content
