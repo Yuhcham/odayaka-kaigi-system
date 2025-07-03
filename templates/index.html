@@ -337,6 +337,9 @@ a.href = url;
 </body>
 </html>
 -->
+
+
+
 <!DOCTYPE html>
 <html lang="ja">
 <head>
@@ -345,10 +348,6 @@ a.href = url;
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&display=swap');
         body { font-family: 'Noto Sans JP', sans-serif; text-align: center; margin: 0; background-color: #f4f7f9; color: #4A5568; }
-        #warmup-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(255, 255, 255, 0.9); display: flex; justify-content: center; align-items: center; flex-direction: column; z-index: 1000; }
-        .spinner { border: 8px solid #f3f3f3; border-top: 8px solid #4299E1; border-radius: 50%; width: 60px; height: 60px; animation: spin 1.5s linear infinite; }
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-        #warmup-overlay p { font-size: 1.2em; font-weight: 500; margin-top: 20px; }
         .header { width: 100%; height: 200px; background-image: linear-gradient(rgba(0, 0, 0, 0.3), rgba(0, 0,0, 0.3)), url("{{ url_for('static', filename='header.jpg') }}"); background-size: cover; background-position: center; display: flex; justify-content: center; align-items: center; flex-direction: column; color: white; text-shadow: 0 2px 10px rgba(0, 0, 0, 0.4); }
         .header h1 { font-size: 3.5em; }
         .container { max-width: 850px; margin: 40px auto 50px auto; background: white; padding: 30px 50px; border-radius: 16px; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.08); text-align: left; }
@@ -388,10 +387,6 @@ a.href = url;
     </style>
 </head>
 <body>
-    <div id="warmup-overlay">
-        <div class="spinner"></div>
-        <p>サーバーを準備中です... (最大90秒)</p>
-    </div>
     <div class="header"><h1>穏やか会議システム</h1></div>
     <div class="container">
         <div class="input-group">
@@ -438,53 +433,18 @@ a.href = url;
     </div>
 
     <script>
-        // ★★★ ページ読み込み時のウォームアップ処理を、タイムアウト対応版に改造 ★★★
-        window.onload = async function() {
-            const overlay = document.getElementById('warmup-overlay');
-            // 通信を中断させるためのコントローラーを準備
-            const controller = new AbortController();
-            const signal = controller.signal;
+        // ★★★ ウォームアップ関連のJavaScriptを全て削除 ★★★
 
-            // 90秒たったら通信を強制的に中断させるタイマー
-            const timeoutId = setTimeout(() => {
-                controller.abort();
-            }, 90000); // 90000ミリ秒 = 90秒
-
-            try {
-                // /warmupリクエストに、中断用の信号を渡す
-                const response = await fetch('/warmup', { method: 'POST', signal: signal });
-                
-                // 通信が成功したら、タイムアウトタイマーを解除
-                clearTimeout(timeoutId);
-
-                if (!response.ok) {
-                    throw new Error('サーバーの準備に失敗しました。');
-                }
-                const data = await response.json();
-                if (data.status === 'ready') {
-                    overlay.style.display = 'none'; // ローディング画面を非表示に
-                } else {
-                    throw new Error(data.error || '不明なエラー');
-                }
-            } catch (e) {
-                clearTimeout(timeoutId); // エラー時もタイマーは解除
-                if (e.name === 'AbortError') {
-                    // タイムアウトで中断された場合のエラーメッセージ
-                    overlay.innerHTML = `<p style="color: red;">エラー: サーバーの起動に時間がかかりすぎています。<br>お手数ですが、ページを再読み込みしてください。</p>`;
-                } else {
-                    overlay.innerHTML = `<p style="color: red;">エラー: ${e.message}<br>ページを再読み込みしてください。</p>`;
-                }
-            }
-        };
-        
-        // (これより下のJavaScriptは変更ありません)
         const MimeType = MediaRecorder.isTypeSupported('audio/mp4') ? 'audio/mp4' : 'audio/webm';
         const FileExtension = MimeType.split('/')[1];
         const SPEAKING_THRESHOLD = 40, SILENCE_DELAY = 1500, MIN_RECORDING_TIME = 1000;
         let mediaStream = null, audioContext = null, analyser = null, visualizerFrameId = null, fullTranscript = "";
         let mediaRecorder = null, isRecording = false, silenceTimer = null, recordingStartTime = 0;
         let calibratedEmotions = new Set();
+        let isFirstAnalysis = true; // ★ 初回分析かどうかを判定するフラグ
+
         async function startCalibration(emotion) {
+            // (この関数は変更なし)
             const button = document.getElementById(`cal-${emotion}`);
             button.textContent = "録音中..."; button.disabled = true;
             try {
@@ -509,8 +469,10 @@ a.href = url;
                 setTimeout(() => { if(rec.state === 'recording') rec.stop() }, 5000);
             } catch (err) { alert(`マイクエラー: ${err}`); button.textContent = `「${emotion}」を録音`; button.disabled = false; }
         }
+        
         async function startAnalysis() {
             if (mediaStream) return;
+            isFirstAnalysis = true; // ★ 分析開始時にフラグをリセット
             fullTranscript = "";
             document.getElementById('minutes-log').textContent = "";
             document.getElementById('downloadButton').style.display = 'none';
@@ -523,7 +485,9 @@ a.href = url;
                 visualizeAudio();
             } catch (err) { document.getElementById('status').textContent = `エラー: マイクへのアクセスに失敗しました: ${err.message}`; }
         }
+
         async function stopAnalysis() {
+            // (この関数は変更なし)
             if (isRecording) mediaRecorder.stop();
             if (fullTranscript.length > 0) {
                 document.getElementById('downloadButton').style.display = 'inline-block';
@@ -544,7 +508,9 @@ a.href = url;
             });
             document.getElementById('status').textContent = 'マイクの状態: OFF';
         }
+
         function visualizeAudio() {
+            // (この関数は変更なし)
             audioContext = new (window.AudioContext || window.webkitAudioContext)();
             analyser = audioContext.createAnalyser();
             const source = audioContext.createMediaStreamSource(mediaStream);
@@ -572,7 +538,9 @@ a.href = url;
             }
             draw();
         }
+
         function startRecording() {
+            // (この関数は変更なし)
             if (!mediaStream) return;
             isRecording = true;
             document.getElementById('status').textContent = 'マイクの状態: 録音中...';
@@ -583,7 +551,9 @@ a.href = url;
             mediaRecorder.ondataavailable = event => { if (event.data.size > 0) audioChunks.push(event.data); };
             mediaRecorder.onstop = () => { if (audioChunks.length > 0) sendToServer(new Blob(audioChunks, { type: MimeType })); };
         }
+
         function stopRecordingAndSend() {
+            // (この関数は変更なし)
             if (mediaRecorder && mediaRecorder.state === 'recording') {
                 const elapsedTime = Date.now() - recordingStartTime;
                 const timeToWait = MIN_RECORDING_TIME - elapsedTime;
@@ -593,17 +563,28 @@ a.href = url;
                 document.getElementById('status').textContent = 'マイクの状態: ON (発言を待っています)';
             }
         }
+        
         async function sendToServer(audioBlob) {
             const formData = new FormData();
             formData.append('audio', audioBlob, `realtime_audio.${FileExtension}`);
             formData.append('prompt', document.getElementById('meeting-prompt').value);
             const resultDiv = document.getElementById('result');
-            resultDiv.textContent = '分析中...';
+            
+            // ★★★ 初回分析時だけメッセージを変える ★★★
+            if (isFirstAnalysis) {
+                resultDiv.textContent = '初回分析中... (サーバー準備のため少し時間がかかります)';
+            } else {
+                resultDiv.textContent = '分析中...';
+            }
+            
             try {
                 const response = await fetch(`/analyze?ext=${FileExtension}`, { method: 'POST', body: formData });
                 const data = await response.json();
+                
+                isFirstAnalysis = false; // ★ 2回目以降のためにフラグを更新
+
                 if (data.error) { resultDiv.textContent = `エラー: ${data.error}`; return; }
-                resultDiv.textContent = data.filtered_text.trim() ? `「${data.filtered_text}」` : '（ハルシネーションとして結果を切り捨てます）';
+                resultDiv.textContent = data.filtered_text.trim() ? `「${data.filtered_text}」` : '（音声が認識できませんでした）';
                 updateScoreBar(document.getElementById('text-score-bar'), parseFloat(data.text_score));
                 updateScoreBar(document.getElementById('tone-score-bar'), parseFloat(data.tone_score));
                 updateScoreBar(document.getElementById('final-score-bar'), parseFloat(data.final_score));
@@ -615,9 +596,14 @@ a.href = url;
                     document.getElementById('minutes-log').scrollTop = document.getElementById('minutes-log').scrollHeight;
                 }
                 document.getElementById('catImage').style.display = data.is_negative ? 'block' : 'none';
-            } catch (err) { resultDiv.textContent = `通信エラー: ${err}`; }
+            } catch (err) { 
+                resultDiv.textContent = `通信エラー: ${err}`;
+                isFirstAnalysis = true; // エラーが起きたら、次の分析も「初回」扱いにする
+            }
         }
+
         function updateScoreBar(barElement, score) {
+            // (この関数は変更なし)
             const widthPercent = (score + 1) / 2 * 100;
             barElement.style.width = `${widthPercent}%`;
             barElement.textContent = `${(score).toFixed(2)}`;
@@ -625,7 +611,9 @@ a.href = url;
             else if (score > 0.3) { barElement.style.backgroundColor = '#48BB78'; }
             else { barElement.style.backgroundColor = '#4299E1'; }
         }
+
         async function correctWithLLM() {
+            // (この関数は変更なし)
             const minutesLog = document.getElementById('minutes-log');
             const originalText = fullTranscript;
             minutesLog.textContent = "LLM(大規模言語モデル)が校正中です...しばらくお待ちください...";
@@ -636,7 +624,9 @@ a.href = url;
                 else { minutesLog.textContent = data.corrected_text; fullTranscript = data.corrected_text; }
             } catch (err) { minutesLog.textContent = `通信エラー: ${err}`; }
         }
+
         function downloadMinutes() {
+            // (この関数は変更なし)
             let meetingTitle = document.getElementById('meeting-prompt').value.split(' ')[0] || "議事録";
             const blob = new Blob([fullTranscript], { type: 'text/plain' });
             const url = URL.createObjectURL(blob);
