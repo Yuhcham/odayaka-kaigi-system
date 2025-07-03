@@ -225,12 +225,40 @@ if __name__ == '__main__':
     serve(app, host="0.0.0.0", port=8080)
 """
 
-# app.py (最終エラー処理強化版)
-import os, math, librosa, numpy as np, json, subprocess
+import os
+import math
+import librosa
+import numpy as np
+import json
+import subprocess
 from openai import OpenAI
 from flask import Flask, request, jsonify, render_template
 from getpass import getpass
 from pydub import AudioSegment
+
+# ▼▼▼▼▼ ここからウォームアップ処理 ▼▼▼▼▼
+def _warmup_librosa():
+    """
+    サーバー起動時にlibrosaのJITコンパイルを強制的に実行させるための関数。
+    これにより、最初のリクエストがタイムアウトやメモリ不足で失敗するのを防ぐ。
+    """
+    print("--- 🚀 Warming up Librosa (JIT Compilation)... ---")
+    try:
+        # 1秒分の無音データを作成
+        dummy_audio = np.zeros(22050, dtype=np.float32) 
+        
+        # JITコンパイルが走る主要な関数を一度呼び出しておく
+        librosa.feature.rms(y=dummy_audio)
+        librosa.feature.spectral_centroid(y=dummy_audio, sr=22050)
+        librosa.piptrack(y=dummy_audio, sr=22050)
+        
+        print("--- ✅ Librosa warmup complete! ---")
+    except Exception as e:
+        print(f"--- ⚠️ An error occurred during Librosa warmup: {e} ---")
+
+# サーバープロセス開始時にウォームアップを実行
+_warmup_librosa()
+# ▲▲▲▲▲ ここまでウォームアップ処理 ▲▲▲▲▲
 
 app = Flask(__name__)
 
@@ -295,7 +323,6 @@ def index():
 
 @app.route('/analyze', methods=['POST'])
 def analyze_audio():
-    # ★★★ この関数全体を、さらに大きなtry...exceptで囲み、絶対にクラッシュしないようにする ★★★
     try:
         if not client: return jsonify({'error': 'OpenAI client is not configured.'}), 500
         if 'audio' not in request.files: return jsonify({'error': 'No audio file part'}), 400
@@ -327,7 +354,6 @@ def analyze_audio():
                 function_args = json.loads(response.choices[0].message.function_call.arguments)
                 text_sentiment_score = function_args.get("score", 0.0)
             except Exception as e:
-                # ★★★ GPTでエラーが起きても、処理を止めずにスコアを0とする ★★★
                 print(f"GPT感情分析中にエラーが発生しましたが、処理を続行します: {e}")
                 text_sentiment_score = 0.0
         
@@ -339,13 +365,11 @@ def analyze_audio():
         return jsonify({'is_negative': True if final_score < -0.3 else False, 'filtered_text': filtered_text, 'text_score': f"{text_sentiment_score:.2f}",'tone_score': f"{tone_score:.2f}",'final_score': f"{final_score:.2f}"})
 
     except Exception as e:
-        # ★★★ 万が一、この関数内のどこかで予期せぬエラーが起きても、必ずJSONでエラーを返す ★★★
         print(f"分析ルート全体で予期せぬエラーが発生しました: {e}")
         return jsonify({'error': f'サーバーで予期せぬエラーが発生しました: {e}'}), 500
 
 @app.route('/correct', methods=['POST'])
 def correct_text_with_llm():
-    # (この関数は変更ありません)
     data = request.json; original_text = data['text']
     try:
         response = client.chat.completions.create(model="gpt-3.5-turbo", messages=[{"role": "system", "content": "あなたはビジネス会議の議事録を校正するプロの書記です。誤字脱字を修正し、文脈として不自然な部分を修正し、自然で読みやすい日本語の議事録に清書してください。"},{"role": "user", "content": original_text}])
