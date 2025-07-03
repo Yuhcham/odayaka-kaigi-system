@@ -337,7 +337,6 @@ a.href = url;
 </body>
 </html>
 -->
-
 <!DOCTYPE html>
 <html lang="ja">
 <head>
@@ -391,7 +390,7 @@ a.href = url;
 <body>
     <div id="warmup-overlay">
         <div class="spinner"></div>
-        <p>サーバーを準備中です... (最大1分程度)</p>
+        <p>サーバーを準備中です... (最大90秒)</p>
     </div>
     <div class="header"><h1>穏やか会議システム</h1></div>
     <div class="container">
@@ -437,30 +436,54 @@ a.href = url;
             </div>
         </div>
     </div>
+
     <script>
+        // ★★★ ページ読み込み時のウォームアップ処理を、タイムアウト対応版に改造 ★★★
+        window.onload = async function() {
+            const overlay = document.getElementById('warmup-overlay');
+            // 通信を中断させるためのコントローラーを準備
+            const controller = new AbortController();
+            const signal = controller.signal;
+
+            // 90秒たったら通信を強制的に中断させるタイマー
+            const timeoutId = setTimeout(() => {
+                controller.abort();
+            }, 90000); // 90000ミリ秒 = 90秒
+
+            try {
+                // /warmupリクエストに、中断用の信号を渡す
+                const response = await fetch('/warmup', { method: 'POST', signal: signal });
+                
+                // 通信が成功したら、タイムアウトタイマーを解除
+                clearTimeout(timeoutId);
+
+                if (!response.ok) {
+                    throw new Error('サーバーの準備に失敗しました。');
+                }
+                const data = await response.json();
+                if (data.status === 'ready') {
+                    overlay.style.display = 'none'; // ローディング画面を非表示に
+                } else {
+                    throw new Error(data.error || '不明なエラー');
+                }
+            } catch (e) {
+                clearTimeout(timeoutId); // エラー時もタイマーは解除
+                if (e.name === 'AbortError') {
+                    // タイムアウトで中断された場合のエラーメッセージ
+                    overlay.innerHTML = `<p style="color: red;">エラー: サーバーの起動に時間がかかりすぎています。<br>お手数ですが、ページを再読み込みしてください。</p>`;
+                } else {
+                    overlay.innerHTML = `<p style="color: red;">エラー: ${e.message}<br>ページを再読み込みしてください。</p>`;
+                }
+            }
+        };
+        
+        // (これより下のJavaScriptは変更ありません)
         const MimeType = MediaRecorder.isTypeSupported('audio/mp4') ? 'audio/mp4' : 'audio/webm';
         const FileExtension = MimeType.split('/')[1];
         const SPEAKING_THRESHOLD = 40, SILENCE_DELAY = 1500, MIN_RECORDING_TIME = 1000;
         let mediaStream = null, audioContext = null, analyser = null, visualizerFrameId = null, fullTranscript = "";
         let mediaRecorder = null, isRecording = false, silenceTimer = null, recordingStartTime = 0;
         let calibratedEmotions = new Set();
-
-        window.onload = async function() {
-            const overlay = document.getElementById('warmup-overlay');
-            try {
-                const response = await fetch('/warmup', { method: 'POST' });
-                if (!response.ok) throw new Error('サーバーの準備に失敗しました。');
-                const data = await response.json();
-                if (data.status === 'ready') {
-                    overlay.style.display = 'none';
-                } else {
-                    throw new Error(data.error || '不明なエラー');
-                }
-            } catch (e) {
-                overlay.innerHTML = `<p style="color: red;">エラー: ${e.message}<br>ページを再読み込みしてください。</p>`;
-            }
-        };
-
         async function startCalibration(emotion) {
             const button = document.getElementById(`cal-${emotion}`);
             button.textContent = "録音中..."; button.disabled = true;
@@ -486,7 +509,6 @@ a.href = url;
                 setTimeout(() => { if(rec.state === 'recording') rec.stop() }, 5000);
             } catch (err) { alert(`マイクエラー: ${err}`); button.textContent = `「${emotion}」を録音`; button.disabled = false; }
         }
-        
         async function startAnalysis() {
             if (mediaStream) return;
             fullTranscript = "";
@@ -501,7 +523,6 @@ a.href = url;
                 visualizeAudio();
             } catch (err) { document.getElementById('status').textContent = `エラー: マイクへのアクセスに失敗しました: ${err.message}`; }
         }
-
         async function stopAnalysis() {
             if (isRecording) mediaRecorder.stop();
             if (fullTranscript.length > 0) {
@@ -523,7 +544,6 @@ a.href = url;
             });
             document.getElementById('status').textContent = 'マイクの状態: OFF';
         }
-
         function visualizeAudio() {
             audioContext = new (window.AudioContext || window.webkitAudioContext)();
             analyser = audioContext.createAnalyser();
@@ -552,7 +572,6 @@ a.href = url;
             }
             draw();
         }
-
         function startRecording() {
             if (!mediaStream) return;
             isRecording = true;
@@ -564,7 +583,6 @@ a.href = url;
             mediaRecorder.ondataavailable = event => { if (event.data.size > 0) audioChunks.push(event.data); };
             mediaRecorder.onstop = () => { if (audioChunks.length > 0) sendToServer(new Blob(audioChunks, { type: MimeType })); };
         }
-
         function stopRecordingAndSend() {
             if (mediaRecorder && mediaRecorder.state === 'recording') {
                 const elapsedTime = Date.now() - recordingStartTime;
@@ -575,7 +593,6 @@ a.href = url;
                 document.getElementById('status').textContent = 'マイクの状態: ON (発言を待っています)';
             }
         }
-        
         async function sendToServer(audioBlob) {
             const formData = new FormData();
             formData.append('audio', audioBlob, `realtime_audio.${FileExtension}`);
@@ -600,7 +617,6 @@ a.href = url;
                 document.getElementById('catImage').style.display = data.is_negative ? 'block' : 'none';
             } catch (err) { resultDiv.textContent = `通信エラー: ${err}`; }
         }
-
         function updateScoreBar(barElement, score) {
             const widthPercent = (score + 1) / 2 * 100;
             barElement.style.width = `${widthPercent}%`;
@@ -609,7 +625,6 @@ a.href = url;
             else if (score > 0.3) { barElement.style.backgroundColor = '#48BB78'; }
             else { barElement.style.backgroundColor = '#4299E1'; }
         }
-
         async function correctWithLLM() {
             const minutesLog = document.getElementById('minutes-log');
             const originalText = fullTranscript;
@@ -621,7 +636,6 @@ a.href = url;
                 else { minutesLog.textContent = data.corrected_text; fullTranscript = data.corrected_text; }
             } catch (err) { minutesLog.textContent = `通信エラー: ${err}`; }
         }
-
         function downloadMinutes() {
             let meetingTitle = document.getElementById('meeting-prompt').value.split(' ')[0] || "議事録";
             const blob = new Blob([fullTranscript], { type: 'text/plain' });
