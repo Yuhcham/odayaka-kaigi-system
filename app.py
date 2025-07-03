@@ -225,7 +225,7 @@ if __name__ == '__main__':
     serve(app, host="0.0.0.0", port=8080)
 """
 
-# app.py (ウォームアップ機能廃止・最終版)
+# app.py (構文エラー修正・最終完成版)
 import os, math, librosa, numpy as np, json, subprocess
 from openai import OpenAI
 from flask import Flask, request, jsonify, render_template
@@ -305,20 +305,28 @@ def analyze_audio():
         pitches, _ = librosa.piptrack(y=y, sr=sr); rms = librosa.feature.rms(y=y); spectral_centroid = librosa.feature.spectral_centroid(y=y, sr=sr)
         current_features = [np.mean(pitches[pitches > 0]) if np.any(pitches > 0) else 0.0, np.mean(rms), np.mean(spectral_centroid)]
         tone_score = calculate_tone_score(current_features[0], current_features[1], current_features[2], active_ranges)
+        
         with open(wav_filename, 'rb') as clean_audio_file:
             transcript_data = client.audio.transcriptions.create(model="whisper-1", file=clean_audio_file, language="ja", response_format="verbose_json")
+        
         filtered_text = ""; text_sentiment_score = 0.0
         for segment in transcript_data.segments:
             if segment.avg_logprob > -0.8 and segment.no_speech_prob < 0.5: filtered_text += segment.text
+        
         if filtered_text.strip():
             try:
                 response = client.chat.completions.create(model="gpt-3.5-turbo", messages=[{"role": "system", "content": "あなたはテキストの感情を分析する専門家です。ユーザーのテキストがポジティブかネガティブかを判断し、-1.0（完全にネガティブ）から1.0（完全にポジティブ）の間のスコアで評価してください。"},{"role": "user", "content": filtered_text}], functions=[{"name": "set_sentiment_score","description": "感情分析スコアを設定する","parameters": {"type": "object","properties": {"score": {"type": "number","description": "感情スコア, -1.0から1.0"}},"required": ["score"]}}], function_call={"name": "set_sentiment_score"})
-                function_args = json.loads(response.choices[0].message.function_call.arguments); text_sentiment_score = function_args.get("score", 0.0)
-            except Exception as e: print(f"GPT感情分析中にエラー: {e}")
+                function_args = json.loads(response.choices[0].message.function_call.arguments)
+                text_sentiment_score = function_args.get("score", 0.0)
+            except Exception as e:
+                print(f"GPT感情分析中にエラー: {e}")
+        
         final_score = (text_sentiment_score * 0.7) + (tone_score * 0.3)
         final_score = max(-1.0, min(1.0, final_score))
+
         return jsonify({'is_negative': True if final_score < -0.3 else False, 'filtered_text': filtered_text, 'text_score': f"{text_sentiment_score:.2f}",'tone_score': f"{tone_score:.2f}",'final_score': f"{final_score:.2f}"})
     except Exception as e:
+        print(f"分析中にエラーが発生しました: {e}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/correct', methods=['POST'])
