@@ -94,7 +94,7 @@
     <script>
         const MimeType = MediaRecorder.isTypeSupported('audio/mp4') ? 'audio/mp4' : 'audio/webm';
         const FileExtension = MimeType.split('/')[1];
-        const SPEAKING_THRESHOLD = 40, SILENCE_DELAY = 1500, MIN_RECORDING_TIME = 1000;
+        const SPEAKING_THRESHOLD = 20, SILENCE_DELAY = 1500, MIN_RECORDING_TIME = 1000;
         let mediaStream = null, audioContext = null, analyser = null, visualizerFrameId = null, fullTranscript = "";
         let mediaRecorder = null, isRecording = false, silenceTimer = null, recordingStartTime = 0;
         let calibratedEmotions = new Set();
