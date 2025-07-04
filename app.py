@@ -123,7 +123,7 @@ def analyze_audio():
         text_sentiment_score = 0.0
         if filtered_text.strip():
             try:
-                response = client.chat.completions.create(model="gpt-3.5-turbo", messages=[{"role": "system", "content": "あなたはテキストの感情を分析する専門家です。ユーザーのテキストがポジティブかネガティブかを判断し、-1.0（完全にネガティブ）から1.0（完全にポジティブ）の間のスコアで評価してください。"},{"role": "user", "content": filtered_text}], functions=[{"name": "set_sentiment_score","description": "感情分析スコアを設定する","parameters": {"type": "object","properties": {"score": {"type": "number","description": "感情スコア, -1.0から1.0"}},"required": ["score"]}}], function_call={"name": "set_sentiment_score"})
+                response = client.chat.completions.create(model="gpt-4o", messages=[{"role": "system", "content": "あなたはテキストの感情を分析する専門家です。ユーザーのテキストがポジティブかネガティブかを判断し、-1.0（完全にネガティブ）から1.0（完全にポジティブ）の間のスコアで評価してください。"},{"role": "user", "content": filtered_text}], functions=[{"name": "set_sentiment_score","description": "感情分析スコアを設定する","parameters": {"type": "object","properties": {"score": {"type": "number","description": "感情スコア, -1.0から1.0"}},"required": ["score"]}}], function_call={"name": "set_sentiment_score"})
                 function_args = json.loads(response.choices[0].message.function_call.arguments)
                 text_sentiment_score = function_args.get("score", 0.0)
             except Exception as e:
@@ -145,7 +145,7 @@ def analyze_audio():
 def correct_text_with_llm():
     data = request.json; original_text = data['text']
     try:
-        response = client.chat.completions.create(model="gpt-3.5-turbo", messages=[{"role": "system", "content": "あなたはビジネス会議の議事録を校正するプロの書記だと思ってください。誤字脱字を修正し、文脈として不自然な部分を修正して、自然で読みやすい日本語の議事録に清書して。"},{"role": "user", "content": original_text}])
+        response = client.chat.completions.create(model="gpt-4o", messages=[{"role": "system", "content": "あなたはビジネス会議の議事録を校正するプロの書記だと思ってください。誤字脱字を修正し、文脈として不自然な部分を修正して、自然で読みやすい日本語の議事録に清書して。"},{"role": "user", "content": original_text}])
         corrected_text = response.choices[0].message.content
         return jsonify({'corrected_text': corrected_text})
     except Exception as e:
